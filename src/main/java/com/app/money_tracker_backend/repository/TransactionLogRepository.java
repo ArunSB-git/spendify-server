@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public interface TransactionLogRepository extends JpaRepository<TransactionLog, UUID> {
 
-    List<TransactionLog> findAllByUserId(UUID userId);
+    List<TransactionLog> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
 
 
 }

@@ -1,6 +1,7 @@
 package com.app.money_tracker_backend.service;
 
 import com.app.money_tracker_backend.config.SecurityUtil;
+import com.app.money_tracker_backend.dto.AddAmountRequest;
 import com.app.money_tracker_backend.dto.TransactionLogResponse;
 import com.app.money_tracker_backend.dto.TransactionRequest;
 import com.app.money_tracker_backend.dto.TransactionResponse;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -95,7 +97,7 @@ public class TransactionService {
                 .transactionName(savedTx.getTransactionName())
                 .transactionType(savedTx.getTransactionType())
                 .amount(savedTx.getAmount())
-                .action("CREATE")
+                .action("Created a new transaction")
                 .createdAt(LocalDateTime.now())
                 .build();
         transactionLogRepository.save(log);
@@ -138,7 +140,7 @@ public class TransactionService {
                         .transactionName(updatedTx.getTransactionName())
                         .transactionType(updatedTx.getTransactionType())
                         .amount(updatedTx.getAmount())
-                        .action("UPDATE")
+                        .action("Amount for this transaction has been updated")
                         .createdAt(LocalDateTime.now())
                         .build()
         );
@@ -160,11 +162,54 @@ public class TransactionService {
     @Transactional(readOnly = true)
     public List<TransactionLogResponse> getAllTransactionsLogs() {
         User user = getCurrentUser();
-        return transactionLogRepository.findAllByUserId(user.getId())
+        return transactionLogRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
+
+    @Transactional
+    public TransactionResponse addAmountToTransaction(AddAmountRequest request) {
+
+        User user = getCurrentUser();
+
+        Transaction tx = transactionRepository.findById(request.getTransactionId())
+                .orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        // 🔐 Ownership check
+        if (!tx.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized access");
+        }
+
+        if (request.getAmountToAdd() == null ||
+                request.getAmountToAdd().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Amount to add must be greater than zero");
+        }
+
+        // 🔹 Add amount
+        BigDecimal updatedAmount = tx.getAmount().add(request.getAmountToAdd());
+        tx.setAmount(updatedAmount);
+        tx.setUpdatedAt(LocalDateTime.now());
+
+        Transaction updatedTx = transactionRepository.save(tx);
+
+        // 🔹 Log ADD action
+        TransactionLog log = TransactionLog.builder()
+                .transactionId(tx.getId())
+                .user(user)
+                .bank(tx.getBank())
+                .transactionName(tx.getTransactionName())
+                .transactionType(tx.getTransactionType())
+                .amount(request.getAmountToAdd()) // log only added amount
+                .action("Added money to this existing transaction")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        transactionLogRepository.save(log);
+
+        return toResponse(updatedTx);
+    }
+
 
 
 
