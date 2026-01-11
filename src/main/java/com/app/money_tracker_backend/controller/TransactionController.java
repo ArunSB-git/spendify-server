@@ -1,5 +1,6 @@
 package com.app.money_tracker_backend.controller;
 
+import com.app.money_tracker_backend.dto.AddAmountRequest;
 import com.app.money_tracker_backend.dto.TransactionLogResponse;
 import com.app.money_tracker_backend.dto.TransactionRequest;
 import com.app.money_tracker_backend.dto.TransactionResponse;
@@ -54,6 +55,12 @@ public class TransactionController {
         return transactionService.getAllTransactionsLogs();
     }
 
+    @PostMapping("/add-amount")
+    public TransactionResponse addAmountToTransaction(
+            @RequestBody AddAmountRequest request
+    ) {
+        return transactionService.addAmountToTransaction(request);
+    }
 
 
 }
