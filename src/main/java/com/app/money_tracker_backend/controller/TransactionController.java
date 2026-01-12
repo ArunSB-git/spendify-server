@@ -1,14 +1,13 @@
 package com.app.money_tracker_backend.controller;
 
-import com.app.money_tracker_backend.dto.AddAmountRequest;
-import com.app.money_tracker_backend.dto.TransactionLogResponse;
-import com.app.money_tracker_backend.dto.TransactionRequest;
-import com.app.money_tracker_backend.dto.TransactionResponse;
+import com.app.money_tracker_backend.dto.*;
+import com.app.money_tracker_backend.enums.TransactionType;
 import com.app.money_tracker_backend.model.Transaction;
 import com.app.money_tracker_backend.service.TransactionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,6 +71,25 @@ public class TransactionController {
                 Map.of("message", "Transaction deleted successfully")
         );
     }
+
+    @GetMapping("/pie")
+    public List<MonthlyTransactionSpentResponse> getSpent(
+            @RequestParam String type,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month
+    ) {
+
+        return transactionService.calculateSpent(type, year, month);
+    }
+
+    @GetMapping("/yearly-summary")
+    public List<MonthlyTransactionSummaryResponse> getYearlySummary(
+            @RequestParam Integer year,
+            @RequestParam TransactionType transactionType
+    ) {
+        return transactionService.getYearlyTransactionSummary(year, transactionType);
+    }
+
 
 
 }

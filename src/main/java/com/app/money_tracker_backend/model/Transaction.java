@@ -1,6 +1,7 @@
 package com.app.money_tracker_backend.model;
 
 
+import com.app.money_tracker_backend.enums.TransactionType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -28,8 +29,9 @@ public class Transaction {
     @Column(name = "transaction_name", nullable = false)
     private String transactionName;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "transaction_type", nullable = false)
-    private String transactionType;
+    private TransactionType transactionType;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;

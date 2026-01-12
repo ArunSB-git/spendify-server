@@ -1,6 +1,8 @@
 package com.app.money_tracker_backend.repository;
 
+import com.app.money_tracker_backend.enums.TransactionType;
 import com.app.money_tracker_backend.model.Transaction;
+import com.app.money_tracker_backend.model.TransactionLog;
 import com.app.money_tracker_backend.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -24,4 +26,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     // Find deleted transactions older than the given date
     List<Transaction> findAllByDeletedTrueAndUpdatedAtBefore(LocalDateTime dateTime);
+
+    List<Transaction> findByUserIdAndTransactionTypeAndDeletedFalse(
+            UUID userId,
+            TransactionType transactionType
+    );
+
 }
