@@ -43,12 +43,12 @@ public class TransactionController {
         return transactionService.updateTransaction(id, request);
     }
 
-    @DeleteMapping("/{transactionId}")
-    public ResponseEntity<Map<String, String>> deleteTransaction(
-            @PathVariable String transactionId) {
-
-        return (ResponseEntity<Map<String, String>>) ResponseEntity.badRequest();
-    }
+//    @DeleteMapping("/{transactionId}")
+//    public ResponseEntity<Map<String, String>> deleteTransaction(
+//            @PathVariable String transactionId) {
+//
+//        return (ResponseEntity<Map<String, String>>) ResponseEntity.badRequest();
+//    }
 
     @GetMapping("/logs")
     public List<TransactionLogResponse> getAllTransactionsLogs() {
@@ -60,6 +60,17 @@ public class TransactionController {
             @RequestBody AddAmountRequest request
     ) {
         return transactionService.addAmountToTransaction(request);
+    }
+
+    @DeleteMapping("/{transactionId}")
+    public ResponseEntity<Map<String, String>> deleteTransaction(
+            @PathVariable UUID transactionId
+    ) {
+        transactionService.deleteTransaction(transactionId);
+
+        return ResponseEntity.ok(
+                Map.of("message", "Transaction deleted successfully")
+        );
     }
 
 

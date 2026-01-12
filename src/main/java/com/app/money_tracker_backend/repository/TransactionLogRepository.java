@@ -11,5 +11,6 @@ public interface TransactionLogRepository extends JpaRepository<TransactionLog, 
 
     List<TransactionLog> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
 
-
+    // Delete all logs by transaction id
+    void deleteAllByTransactionId(UUID transactionId);
 }

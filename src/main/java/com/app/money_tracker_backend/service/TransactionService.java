@@ -85,6 +85,7 @@ public class TransactionService {
                 .bank(bank) // Set bank
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
+                .deleted(false)
                 .build();
 
         Transaction savedTx = transactionRepository.save(tx);
@@ -152,7 +153,7 @@ public class TransactionService {
     @Transactional(readOnly = true)
     public List<TransactionResponse> getAllTransactions() {
         User user = getCurrentUser();
-        return transactionRepository.findAllByUserId(user.getId())
+        return transactionRepository.findAllByUserIdAndDeletedFalseOrderByUpdatedAtDesc(user.getId())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -208,6 +209,38 @@ public class TransactionService {
         transactionLogRepository.save(log);
 
         return toResponse(updatedTx);
+    }
+
+    @Transactional
+    public void deleteTransaction(UUID transactionId) {
+
+        User user = getCurrentUser();
+
+        Transaction tx = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        // 🔐 Ownership check
+        if (!tx.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Unauthorized access");
+        }
+
+        // 📝 Log delete action (AUDIT SAFE)
+        TransactionLog deleteLog = TransactionLog.builder()
+                .transactionId(tx.getId())
+                .user(user)
+                .bank(tx.getBank())
+                .transactionName(tx.getTransactionName())
+                .transactionType(tx.getTransactionType())
+                .amount(tx.getAmount())
+                .action("Transaction was deleted")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        transactionLogRepository.save(deleteLog);
+
+        tx.setDeleted(true);       // Mark as deleted
+        tx.setUpdatedAt(LocalDateTime.now()); // Optional: update timestamp
+        transactionRepository.save(tx);
     }
 
 
