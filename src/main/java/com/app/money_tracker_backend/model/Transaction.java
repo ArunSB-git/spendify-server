@@ -43,5 +43,8 @@ public class Transaction {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bank_id") // 🔹 New foreign key
     private Bank bank;
+
+    @Column(nullable = false)
+    private boolean deleted = false;
 }
 
