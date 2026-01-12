@@ -1,10 +1,8 @@
 package com.app.money_tracker_backend.service;
 
 import com.app.money_tracker_backend.config.SecurityUtil;
-import com.app.money_tracker_backend.dto.AddAmountRequest;
-import com.app.money_tracker_backend.dto.TransactionLogResponse;
-import com.app.money_tracker_backend.dto.TransactionRequest;
-import com.app.money_tracker_backend.dto.TransactionResponse;
+import com.app.money_tracker_backend.dto.*;
+import com.app.money_tracker_backend.enums.TransactionType;
 import com.app.money_tracker_backend.model.Bank;
 import com.app.money_tracker_backend.model.Transaction;
 import com.app.money_tracker_backend.model.TransactionLog;
@@ -18,9 +16,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.time.LocalTime;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -79,7 +80,7 @@ public class TransactionService {
 
         Transaction tx = Transaction.builder()
                 .transactionName(request.getTransactionName())
-                .transactionType(request.getTransactionType())
+                .transactionType(TransactionType.valueOf(request.getTransactionType()))
                 .amount(request.getAmount())
                 .user(user)
                 .bank(bank) // Set bank
@@ -125,7 +126,7 @@ public class TransactionService {
         }
 
         tx.setTransactionName(request.getTransactionName());
-        tx.setTransactionType(request.getTransactionType());
+        tx.setTransactionType(TransactionType.valueOf(request.getTransactionType()));
         tx.setAmount(request.getAmount());
         tx.setBank(bank);
         tx.setUpdatedAt(LocalDateTime.now());
@@ -241,6 +242,180 @@ public class TransactionService {
         tx.setDeleted(true);       // Mark as deleted
         tx.setUpdatedAt(LocalDateTime.now()); // Optional: update timestamp
         transactionRepository.save(tx);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MonthlyTransactionSpentResponse> calculateSpent(
+            String type,
+            Integer year,
+            Integer month
+    ) {
+        User user = getCurrentUser();
+
+        LocalDateTime start;
+        LocalDateTime end;
+
+        // Determine the date range
+        switch (type.toUpperCase()) {
+            case "TODAY" -> {
+                start = LocalDate.now().atStartOfDay();
+                end = LocalDate.now().atTime(LocalTime.MAX);
+            }
+            case "MONTH" -> {
+                if (year == null || month == null)
+                    throw new IllegalArgumentException("Year and month are required for MONTH");
+                start = LocalDate.of(year, month, 1).atStartOfDay();
+                end = start.plusMonths(1).minusSeconds(1);
+            }
+            case "YEAR" -> {
+                if (year == null)
+                    throw new IllegalArgumentException("Year is required for YEAR");
+                start = LocalDate.of(year, 1, 1).atStartOfDay();
+                end = LocalDate.of(year, 12, 31).atTime(LocalTime.MAX);
+            }
+            default -> throw new IllegalArgumentException("Invalid type: TODAY, MONTH, YEAR");
+        }
+
+        // 1️⃣ Get all current DEBIT transactions for the user
+        List<Transaction> debitTransactions = transactionRepository
+                .findByUserIdAndTransactionTypeAndDeletedFalse(user.getId(), TransactionType.DEBIT);
+
+        if (debitTransactions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2️⃣ Get all transaction logs for these DEBIT transactions in the date range
+        List<UUID> debitTransactionIds = debitTransactions.stream()
+                .map(Transaction::getId)
+                .toList();
+
+        List<TransactionLog> logs = transactionLogRepository
+                .findByTransactionIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
+                        debitTransactionIds, start, end
+                );
+
+        // 3️⃣ Calculate cumulative amount per transaction
+        Map<UUID, BigDecimal> totals = new HashMap<>();
+        Map<UUID, String> names = new HashMap<>();
+        Set<UUID> deleted = new HashSet<>();
+
+        for (TransactionLog log : logs) {
+            UUID txId = log.getTransactionId();
+
+            if (deleted.contains(txId)) continue;
+
+            names.putIfAbsent(txId, log.getTransactionName());
+
+            switch (log.getAction()) {
+                case "Created a new transaction" -> totals.put(txId, log.getAmount());
+                case "Added money to this existing transaction" ->
+                        totals.merge(txId, log.getAmount(), BigDecimal::add);
+                case "Amount for this transaction has been updated" -> totals.put(txId, log.getAmount());
+                case "Transaction was deleted" -> {
+                    totals.remove(txId);
+                    deleted.add(txId);
+                }
+            }
+        }
+
+        // 4️⃣ Build response
+        return totals.entrySet()
+                .stream()
+                .map(e -> new MonthlyTransactionSpentResponse(
+                        e.getKey(),
+                        names.get(e.getKey()),
+                        e.getValue()
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MonthlyTransactionSummaryResponse> getYearlyTransactionSummary(
+            Integer year,
+            TransactionType transactionType
+    ) {
+
+        if (year == null) {
+            throw new IllegalArgumentException("Year is required");
+        }
+
+        User user = getCurrentUser();
+
+        // 1️⃣ Get current transactions of requested type
+        List<Transaction> transactions =
+                transactionRepository.findByUserIdAndTransactionTypeAndDeletedFalse(
+                        user.getId(),
+                        transactionType
+                );
+
+        if (transactions.isEmpty()) {
+            return IntStream.rangeClosed(1, 12)
+                    .mapToObj(m -> new MonthlyTransactionSummaryResponse(m, List.of()))
+                    .toList();
+        }
+
+        Map<UUID, String> transactionNames = transactions.stream()
+                .collect(Collectors.toMap(Transaction::getId, Transaction::getTransactionName));
+
+        List<UUID> transactionIds = transactions.stream()
+                .map(Transaction::getId)
+                .toList();
+
+        List<MonthlyTransactionSummaryResponse> response = new ArrayList<>();
+
+        // 2️⃣ Month loop
+        for (int month = 1; month <= 12; month++) {
+
+            LocalDateTime start = LocalDate.of(year, month, 1).atStartOfDay();
+            LocalDateTime end = start.plusMonths(1).minusSeconds(1);
+
+            List<TransactionLog> logs =
+                    transactionLogRepository.findByTransactionIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
+                            transactionIds,
+                            start,
+                            end
+                    );
+
+            Map<UUID, BigDecimal> totals = new HashMap<>();
+            Set<UUID> deleted = new HashSet<>();
+
+            for (TransactionLog log : logs) {
+
+                UUID txId = log.getTransactionId();
+                if (deleted.contains(txId)) continue;
+
+                switch (log.getAction()) {
+
+                    case "Created a new transaction" ->
+                            totals.put(txId, log.getAmount());
+
+                    case "Added money to this existing transaction" ->
+                            totals.merge(txId, log.getAmount(), BigDecimal::add);
+
+                    case "Amount for this transaction has been updated" ->
+                            totals.put(txId, log.getAmount());
+
+                    case "Transaction was deleted" -> {
+                        totals.remove(txId);
+                        deleted.add(txId);
+                    }
+                }
+            }
+
+            // 3️⃣ Convert to transaction list
+            List<MonthlyTransactionRecordResponse> transactionResponses =
+                    totals.entrySet().stream()
+                            .map(e -> new MonthlyTransactionRecordResponse(
+                                    e.getKey(),
+                                    transactionNames.get(e.getKey()),
+                                    e.getValue()
+                            ))
+                            .toList();
+
+            response.add(new MonthlyTransactionSummaryResponse(month, transactionResponses));
+        }
+
+        return response;
     }
 
 
