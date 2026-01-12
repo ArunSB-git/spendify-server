@@ -32,4 +32,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
             TransactionType transactionType
     );
 
+    List<Transaction> findAllByUserIdAndDeletedFalse(UUID userId);
+
 }
