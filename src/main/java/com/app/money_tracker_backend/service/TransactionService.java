@@ -419,6 +419,111 @@ public class TransactionService {
     }
 
 
+    @Transactional(readOnly = true)
+    public List<MonthlyTransactionAmountResponse> getYearlyCreditDebitAmount(
+            Integer year
+    ) {
+
+        if (year == null) {
+            throw new IllegalArgumentException("Year is required");
+        }
+
+        User user = getCurrentUser();
+
+        // 1️⃣ Get ALL current transactions (credit + debit)
+        List<Transaction> transactions =
+                transactionRepository.findAllByUserIdAndDeletedFalse(user.getId());
+
+        if (transactions.isEmpty()) {
+            return IntStream.rangeClosed(1, 12)
+                    .mapToObj(m -> new MonthlyTransactionAmountResponse(
+                            m,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO
+                    ))
+                    .toList();
+        }
+
+        // Map transactionId → type
+        Map<UUID, TransactionType> transactionTypes =
+                transactions.stream()
+                        .collect(Collectors.toMap(
+                                Transaction::getId,
+                                Transaction::getTransactionType
+                        ));
+
+        List<UUID> transactionIds = new ArrayList<>(transactionTypes.keySet());
+
+        List<MonthlyTransactionAmountResponse> response = new ArrayList<>();
+
+        // 2️⃣ Loop months
+        for (int month = 1; month <= 12; month++) {
+
+            LocalDateTime start = LocalDate.of(year, month, 1).atStartOfDay();
+            LocalDateTime end = start.plusMonths(1).minusSeconds(1);
+
+            List<TransactionLog> logs =
+                    transactionLogRepository
+                            .findByTransactionIdInAndCreatedAtBetweenOrderByCreatedAtAsc(
+                                    transactionIds,
+                                    start,
+                                    end
+                            );
+
+            Map<UUID, BigDecimal> totals = new HashMap<>();
+            Set<UUID> deleted = new HashSet<>();
+
+            // 3️⃣ Reconstruct amounts from logs
+            for (TransactionLog log : logs) {
+
+                UUID txId = log.getTransactionId();
+                if (deleted.contains(txId)) continue;
+
+                switch (log.getAction()) {
+
+                    case "Created a new transaction" ->
+                            totals.put(txId, log.getAmount());
+
+                    case "Added money to this existing transaction" ->
+                            totals.merge(txId, log.getAmount(), BigDecimal::add);
+
+                    case "Amount for this transaction has been updated" ->
+                            totals.put(txId, log.getAmount());
+
+                    case "Transaction was deleted" -> {
+                        totals.remove(txId);
+                        deleted.add(txId);
+                    }
+                }
+            }
+
+            // 4️⃣ Split CREDIT & DEBIT totals
+            BigDecimal creditAmount = BigDecimal.ZERO;
+            BigDecimal debitAmount = BigDecimal.ZERO;
+
+            for (Map.Entry<UUID, BigDecimal> entry : totals.entrySet()) {
+
+                TransactionType type = transactionTypes.get(entry.getKey());
+                BigDecimal amount = entry.getValue();
+
+                if (type == TransactionType.CREDIT) {
+                    creditAmount = creditAmount.add(amount);
+                } else if (type == TransactionType.DEBIT) {
+                    debitAmount = debitAmount.add(amount);
+                }
+            }
+
+            response.add(
+                    new MonthlyTransactionAmountResponse(
+                            month,
+                            creditAmount,
+                            debitAmount
+                    )
+            );
+        }
+
+        return response;
+    }
 
 
 

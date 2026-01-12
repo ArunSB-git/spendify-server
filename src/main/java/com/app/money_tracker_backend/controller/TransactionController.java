@@ -90,6 +90,13 @@ public class TransactionController {
         return transactionService.getYearlyTransactionSummary(year, transactionType);
     }
 
+    @GetMapping("/yearly-credit-debit-amount")
+    public List<MonthlyTransactionAmountResponse> getYearlyCreditDebitAmount(
+            @RequestParam Integer year
+    ) {
+        return transactionService.getYearlyCreditDebitAmount(year);
+    }
+
 
 
 }
