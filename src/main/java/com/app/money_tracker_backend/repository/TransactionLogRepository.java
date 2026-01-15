@@ -22,5 +22,5 @@ public interface TransactionLogRepository extends JpaRepository<TransactionLog, 
             LocalDateTime end
     );
 
-
+    void deleteByUserId(UUID userId);
 }
