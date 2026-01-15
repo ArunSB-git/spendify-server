@@ -4,6 +4,7 @@ import com.app.money_tracker_backend.dto.UserProfileResponse;
 import com.app.money_tracker_backend.model.Bank;
 import com.app.money_tracker_backend.service.AuthService;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,5 +60,15 @@ public class AuthController {
             session.invalidate(); // destroys JSESSIONID
         }
         return "Logged out successfully";
+    }
+
+    @DeleteMapping("/delete")
+    public ResponseEntity<?> deleteAccount(HttpSession session) {
+        authService.deleteAccount();
+        if (session != null) {
+            session.invalidate();
+        }
+
+        return ResponseEntity.ok("Account deleted successfully");
     }
 }
